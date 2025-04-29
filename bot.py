@@ -1,149 +1,159 @@
-import os
+import logging
 import json
-import csv
-from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import os
+from datetime import date, datetime
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, CallbackContext
+)
 
-TOKEN = '7947524305:AAEurXt7P280cv4kFFK4uWohE-eTPW-mZS4'
+# Setup logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Konstanta
-START_DATE = datetime(2025, 4, 29)
-DAYS = 1095
-DAILY_SAVING = 20000
-ITEMS_PER_PAGE = 10
+# Token dari BotFather
+TOKEN = "TOKENMU_DISINI"
 
-# Helper functions
-def get_user_file(user_id):
-    return f"data/{user_id}.json"
+# Path ke file status tabungan
+STATUS_FILE = "status.json"
 
-def load_status(user_id):
-    if not os.path.exists('data'):
-        os.makedirs('data')
-    path = get_user_file(user_id)
-    if os.path.exists(path):
-        with open(path, 'r') as f:
+# Konstanta Target
+TOTAL_TARGET_HARI = 1095  # 3 tahun = 1095 hari
+NABUNG_PER_HARI = 20000   # Rp 20.000 per hari
+
+# === Fungsi Bantu ===
+def load_status():
+    try:
+        with open(STATUS_FILE, "r") as f:
             return json.load(f)
-    else:
-        status = {}
-        for i in range(DAYS):
-            date = (START_DATE + timedelta(days=i)).strftime('%d-%b-%Y')
-            status[date] = False
-        save_status(user_id, status)
-        return status
+    except FileNotFoundError:
+        return {}
 
-def save_status(user_id, status):
-    path = get_user_file(user_id)
-    with open(path, 'w') as f:
-        json.dump(status, f, indent=4)
+def save_status(status):
+    with open(STATUS_FILE, "w") as f:
+        json.dump(status, f)
 
-def export_to_csv(user_id, status):
-    path = f"data/{user_id}_export.csv"
-    with open(path, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(['Tanggal', 'Status'])
-        for date, done in status.items():
-            writer.writerow([date, 'Sudah' if done else 'Belum'])
-    return path
+def today_key():
+    today = date.today()
+    return today.strftime("%d-%b-%Y")
 
-def get_dates_filtered(status, selected_month=None, selected_year=None):
-    dates = list(status.keys())
-    filtered = []
-    for d in dates:
-        date_obj = datetime.strptime(d, '%d-%b-%Y')
-        if selected_month and date_obj.strftime('%B') != selected_month:
-            continue
-        if selected_year and date_obj.year != selected_year:
-            continue
-        filtered.append(d)
-    return filtered
-
-def progress_bar(done, total):
-    bar = '█' * int(30 * done // total) + '-' * (30 - int(30 * done // total))
-    return f"[{bar}] {done}/{total} hari"
-
-# Bot commands
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Selamat datang di Buku Tabungan Bot!\n"
-        "Gunakan perintah:\n"
-        "/status - Cek progress tabungan\n"
-        "/centang - Centang/uncentang hari\n"
-        "/reset - Reset semua progress\n"
-        "/export - Ekspor data ke CSV\n"
-        "/filter - Filter berdasarkan bulan/tahun"
-    )
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    status = load_status(user_id)
-    done = sum(1 for d in status if status[d])
-    total = len(status)
-    total_saved = done * DAILY_SAVING
-
-    await update.message.reply_text(
-        f"Progress Nabung:\n{progress_bar(done, total)}\n"
-        f"Total tabungan: Rp{total_saved:,}"
-    )
-
-async def centang(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    status = load_status(user_id)
-
-    # tampilkan 10 hari terakhir
-    recent_dates = sorted(status.keys())[-10:]
+# === Tampilan Menu Utama ===
+def main_menu():
     keyboard = [
-        [InlineKeyboardButton(f"{'✓' if status[date] else '✗'} {date}", callback_data=f"toggle_{date}")]
-        for date in recent_dates
+        [InlineKeyboardButton("✅ Sudah Nabung Hari Ini", callback_data='check_today')],
+        [InlineKeyboardButton("📊 Lihat Progress", callback_data='progress')],
+        [InlineKeyboardButton("📅 Statistik Bulan Ini", callback_data='statistik')],
+        [InlineKeyboardButton("🎯 Target 3 Tahun", callback_data='target3tahun')],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Pilih tanggal untuk centang/uncentang:", reply_markup=reply_markup)
+    return InlineKeyboardMarkup(keyboard)
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# === Command /start ===
+async def start(update: Update, context: CallbackContext):
+    if update.message:
+        await update.message.reply_text(
+            "Selamat datang di Buku Tabungan!\n\nGunakan tombol di bawah untuk mulai:",
+            reply_markup=main_menu()
+        )
+    elif update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            "Selamat datang di Buku Tabungan!\n\nGunakan tombol di bawah untuk mulai:",
+            reply_markup=main_menu()
+        )
+
+# === Handler Button ===
+async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    status = load_status(user_id)
-
     data = query.data
-    if data.startswith("toggle_"):
-        date = data.replace("toggle_", "")
-        if date in status:
-            status[date] = not status[date]
-            save_status(user_id, status)
-            await query.edit_message_text(f"Tanggal {date} diubah menjadi {'✓ Sudah' if status[date] else '✗ Belum'}.")
 
-async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    status = {}
-    for i in range(DAYS):
-        date = (START_DATE + timedelta(days=i)).strftime('%d-%b-%Y')
-        status[date] = False
-    save_status(user_id, status)
-    await update.message.reply_text("Semua progress berhasil direset!")
+    if data == 'check_today':
+        await handle_check_today(query)
+    elif data == 'progress':
+        await show_progress(query)
+    elif data == 'statistik':
+        await show_statistik(query)
+    elif data == 'target3tahun':
+        await show_target3tahun(query)
 
-async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    status = load_status(user_id)
-    path = export_to_csv(user_id, status)
-    await update.message.reply_document(document=InputFile(path))
+# === Fungsi Tindakan ===
+async def handle_check_today(query):
+    status = load_status()
+    key = today_key()
 
-async def filter_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Maaf, fitur filter bulan/tahun sedang dalam pengembangan.\n"
-        "Sementara gunakan /centang untuk melihat daftar terbaru."
+    if key not in status:
+        status[key] = False
+        save_status(status)
+
+    status[key] = True
+    save_status(status)
+
+    await query.edit_message_text(f"✅ Tabungan untuk hari ini ({key}) berhasil dicentang!\n\nKembali ke menu awal.")
+    await start(query, None)
+
+async def show_progress(query):
+    status = load_status()
+    total_saved = sum(1 for v in status.values() if v)
+    total_days = len(status)
+
+    pesan = (
+        f"📊 Progress Tabungan\n\n"
+        f"✅ Sudah nabung: {total_saved} hari\n"
+        f"📅 Total hari tercatat: {total_days} hari\n"
+        f"💰 Total uang terkumpul: Rp{total_saved * NABUNG_PER_HARI:,}\n\n"
+        f"Kembali ke menu awal."
     )
 
-# Main app
-app = ApplicationBuilder().token(TOKEN).build()
+    await query.edit_message_text(pesan)
+    await start(query, None)
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("status", status))
-app.add_handler(CommandHandler("centang", centang))
-app.add_handler(CommandHandler("reset", reset))
-app.add_handler(CommandHandler("export", export))
-app.add_handler(CommandHandler("filter", filter_command))
-app.add_handler(CallbackQueryHandler(button))
+async def show_statistik(query):
+    status = load_status()
+    this_month = date.today().strftime("%b-%Y")
+    month_stats = {key: value for key, value in status.items() if key.endswith(this_month)}
 
-if __name__ == "__main__":
-    app.run_polling()
+    saved = sum(1 for v in month_stats.values() if v)
+    total_days = len(month_stats)
+
+    pesan = (
+        f"📅 Statistik Bulan Ini ({this_month})\n\n"
+        f"✅ Hari menabung: {saved}/{total_days} hari\n"
+        f"💰 Uang bulan ini: Rp{saved * NABUNG_PER_HARI:,}\n\n"
+        f"Kembali ke menu awal."
+    )
+
+    await query.edit_message_text(pesan)
+    await start(query, None)
+
+async def show_target3tahun(query):
+    status = load_status()
+    total_nabung = sum(1 for v in status.values() if v)
+
+    persen = (total_nabung / TOTAL_TARGET_HARI) * 100
+    sisa_hari = TOTAL_TARGET_HARI - total_nabung
+    total_uang = total_nabung * NABUNG_PER_HARI
+
+    pesan = (
+        f"🎯 Target 3 Tahun Nabung\n\n"
+        f"✅ Hari sudah nabung: {total_nabung} hari\n"
+        f"📈 Progress: {persen:.2f}%\n"
+        f"📅 Hari tersisa: {sisa_hari} hari\n"
+        f"💰 Total uang terkumpul: Rp{total_uang:,}\n\n"
+        f"Semangat terus sampai 3 tahun penuh ya!"
+    )
+
+    await query.edit_message_text(pesan)
+    await start(query, None)
+
+# === Fungsi Main ===
+def main():
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(CommandHandler("target3tahun", show_target3tahun))  # Bisa dipanggil manual juga
+
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
