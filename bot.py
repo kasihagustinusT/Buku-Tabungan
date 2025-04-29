@@ -1,0 +1,241 @@
+import logging
+import json
+import os
+from datetime import date, datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, CallbackContext
+)
+
+# Setup logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+STATUS_FILE = "status.json"
+TOTAL_TARGET_HARI = 1095
+NABUNG_PER_HARI = 20000
+
+# === Fungsi Bantu ===
+def load_status():
+    try:
+        with open(STATUS_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_status(status):
+    with open(STATUS_FILE, "w") as f:
+        json.dump(status, f, indent=2)
+
+def today_key():
+    return date.today().strftime("%d-%b-%Y")
+
+def hitung_beruntun(status):
+    days = sorted(
+        [datetime.strptime(k, "%d-%b-%Y").date() for k, v in status.items() if v.get("saved")],
+        reverse=True
+    )
+    if not days:
+        return 0
+
+    streak = 1
+    for i in range(1, len(days)):
+        if days[i-1] - days[i] == timedelta(days=1):
+            streak += 1
+        else:
+            break
+    return streak
+
+# === Menu Utama ===
+def main_menu():
+    keyboard = [
+        [InlineKeyboardButton("✅ Sudah Nabung Hari Ini", callback_data='check_today')],
+        [InlineKeyboardButton("➕ Tambah Hari Sebelumnya", callback_data='tambah_sebelum')],
+        [InlineKeyboardButton("📊 Lihat Progress", callback_data='progress')],
+        [InlineKeyboardButton("📅 Statistik Bulan Ini", callback_data='statistik')],
+        [InlineKeyboardButton("🎯 Target 3 Tahun", callback_data='target3tahun')],
+        [InlineKeyboardButton("🗂️ Riwayat Tabungan", callback_data='riwayat')],
+        [InlineKeyboardButton("📥 Download Riwayat", callback_data='download_riwayat')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+# === Command ===
+async def start(update: Update, context: CallbackContext):
+    if update.message:
+        await update.message.reply_text("Selamat datang di Buku Tabungan!\n\nGunakan tombol di bawah:", reply_markup=main_menu())
+    elif update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("Selamat datang di Buku Tabungan!\n\nGunakan tombol di bawah:", reply_markup=main_menu())
+
+# === Button Handler ===
+async def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == 'check_today':
+        await handle_check_today(query)
+    elif data == 'tambah_sebelum':
+        await tambah_sebelum(query)
+    elif data == 'progress':
+        await show_progress(query)
+    elif data == 'statistik':
+        await show_statistik(query)
+    elif data == 'target3tahun':
+        await show_target3tahun(query)
+    elif data == 'riwayat':
+        await show_riwayat(query)
+    elif data == 'download_riwayat':
+        await download_riwayat(query)
+
+# === Fungsi Logika ===
+async def handle_check_today(query):
+    status = load_status()
+    key = today_key()
+
+    if key not in status or not status[key].get("saved", False):
+        status[key] = {
+            "saved": True,
+            "timestamp": datetime.now().isoformat()
+        }
+        save_status(status)
+        await query.edit_message_text(f"✅ Tabungan untuk hari ini ({key}) berhasil dicatat!", reply_markup=main_menu())
+    else:
+        await query.edit_message_text(f"✅ Kamu sudah menabung hari ini ({key}).", reply_markup=main_menu())
+
+async def tambah_sebelum(query):
+    status = load_status()
+    today = date.today()
+    added = 0
+
+    for days_ago in range(1, 8):  # maksimum 7 hari ke belakang
+        target_date = today - timedelta(days=days_ago)
+        key = target_date.strftime("%d-%b-%Y")
+        if key not in status or not status[key].get("saved"):
+            status[key] = {
+                "saved": True,
+                "timestamp": datetime.now().isoformat()
+            }
+            added += 1
+            break  # hanya tambah 1 hari
+
+    if added:
+        save_status(status)
+        await query.edit_message_text(f"✅ Tabungan untuk hari sebelumnya berhasil ditambahkan ({key})!", reply_markup=main_menu())
+    else:
+        await query.edit_message_text("⚠️ Semua hari sebelumnya dalam 7 hari terakhir sudah dicatat.", reply_markup=main_menu())
+
+async def tambah_nabung(update: Update, context: CallbackContext):
+    if len(context.args) != 1:
+        await update.message.reply_text("Gunakan format: /tambah YYYY-MM-DD\nContoh: /tambah 2025-04-28")
+        return
+
+    try:
+        tanggal = datetime.strptime(context.args[0], "%Y-%m-%d").date()
+    except ValueError:
+        await update.message.reply_text("Format tanggal salah. Gunakan YYYY-MM-DD.")
+        return
+
+    if tanggal > date.today():
+        await update.message.reply_text("Kamu tidak bisa menabung untuk masa depan.")
+        return
+
+    status = load_status()
+    key = tanggal.strftime("%d-%b-%Y")
+
+    if key in status and status[key].get("saved"):
+        await update.message.reply_text(f"Kamu sudah menabung untuk {key}.")
+    else:
+        status[key] = {
+            "saved": True,
+            "timestamp": datetime.now().isoformat()
+        }
+        save_status(status)
+        await update.message.reply_text(f"✅ Tabungan untuk {key} berhasil ditambahkan!")
+
+# === Tampilan Bot ===
+async def show_progress(query):
+    status = load_status()
+    total_saved = sum(1 for v in status.values() if v.get("saved"))
+    total_days = len(status)
+    beruntun = hitung_beruntun(status)
+
+    pesan = (
+        f"📊 Progress Tabungan\n\n"
+        f"✅ Sudah nabung: {total_saved} hari\n"
+        f"📅 Hari tercatat: {total_days} hari\n"
+        f"🔥 Berturut-turut: {beruntun} hari\n"
+        f"💰 Total uang terkumpul: Rp{total_saved * NABUNG_PER_HARI:,}\n"
+    )
+
+    await query.edit_message_text(pesan, reply_markup=main_menu())
+
+async def show_statistik(query):
+    status = load_status()
+    this_month = date.today().strftime("%b-%Y")
+    month_stats = {key: value for key, value in status.items() if key.endswith(this_month)}
+
+    saved = sum(1 for v in month_stats.values() if v.get("saved"))
+    total_days = len(month_stats)
+
+    pesan = (
+        f"📅 Statistik Bulan Ini ({this_month})\n\n"
+        f"✅ Hari menabung: {saved}/{total_days} hari\n"
+        f"💰 Uang bulan ini: Rp{saved * NABUNG_PER_HARI:,}\n"
+    )
+
+    await query.edit_message_text(pesan, reply_markup=main_menu())
+
+async def show_target3tahun(query):
+    status = load_status()
+    total_nabung = sum(1 for v in status.values() if v.get("saved"))
+    persen = (total_nabung / TOTAL_TARGET_HARI) * 100
+    sisa_hari = TOTAL_TARGET_HARI - total_nabung
+    total_uang = total_nabung * NABUNG_PER_HARI
+
+    pesan = (
+        f"🎯 Target 3 Tahun Nabung\n\n"
+        f"✅ Hari sudah nabung: {total_nabung} hari\n"
+        f"📈 Progress: {persen:.2f}%\n"
+        f"📅 Hari tersisa: {sisa_hari} hari\n"
+        f"💰 Total uang terkumpul: Rp{total_uang:,}\n\n"
+        f"Semangat terus sampai 3 tahun penuh ya!"
+    )
+
+    await query.edit_message_text(pesan, reply_markup=main_menu())
+
+async def show_riwayat(query):
+    status = load_status()
+    sorted_items = sorted(status.items(), reverse=True)
+    message = "🗂️ Riwayat Tabungan Terakhir:\n\n"
+    for i, (key, val) in enumerate(sorted_items[:10], 1):
+        message += f"{i}. {key} - {'✅' if val.get('saved') else '❌'}\n"
+    await query.edit_message_text(message, reply_markup=main_menu())
+
+async def download_riwayat(query):
+    status = load_status()
+    riwayat_filename = "riwayat_tabungan.json"
+    with open(riwayat_filename, "w") as f:
+        json.dump(status, f, indent=2)
+
+    with open(riwayat_filename, "rb") as f:
+        await query.message.reply_document(
+            document=f,
+            filename=riwayat_filename,
+            caption="Ini adalah riwayat tabungan Anda."
+        )
+
+# === Main ===
+def main():
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("tambah", tambah_nabung))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(CommandHandler("target3tahun", show_target3tahun))
+    application.add_handler(CommandHandler("riwayat", show_riwayat))
+    application.add_handler(CommandHandler("download_riwayat", download_riwayat))
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
