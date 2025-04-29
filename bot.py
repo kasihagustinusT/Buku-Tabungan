@@ -12,7 +12,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Token dari BotFather
-TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+TOKEN = os.getenv("BOT_TOKEN", "7947524305:AAEurXt7P280cv4kFFK4uWohE-eTPW-mZS4")
 
 # File status tabungan
 STATUS_FILE = "status.json"
