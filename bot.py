@@ -277,7 +277,7 @@ async def handle_target_duration(update: Update, context: ContextTypes.DEFAULT_T
             "❌ Durasi harus berupa angka positif. Silakan coba lagi.\n"
             "Contoh: 365"
         )
-
+logger.info(f"User data: {context.user_data}")  # Tambahkan di awal handle_daily_amount
 async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Periksa apakah user sedang dalam proses setting target
     if not context.user_data.get("setting_target"):
