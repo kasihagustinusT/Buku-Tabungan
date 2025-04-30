@@ -200,7 +200,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif data == 'target_menu':
         await show_target_menu(query, context)
     elif data == 'atur_target':
-        await atur_target_handler(query, context)
+        context.user_data["setting_target"] = {"step": "duration"}
+        await query.edit_message_text(
+            "📝 *Atur Target Tabungan Baru*\n\n"
+            "Masukkan durasi menabung dalam hari (contoh: 365):",
+            parse_mode="Markdown"
+        )
     elif data == 'lihat_target':
         await show_target_custom(query, context)
     elif data == 'reset_target':
@@ -211,6 +216,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await show_riwayat(query, context)
     elif data == 'download_riwayat':
         await download_riwayat(query, context)
+    elif data.startswith("calendar_"):
+        await calendar_handler(query, context)
     else:
         await query.edit_message_text("Perintah tidak dikenali. Silakan coba lagi.", reply_markup=main_menu(user_id))
 
@@ -324,17 +331,6 @@ async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
 # Target Handlers
-async def atur_target_handler(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    context.user_data["setting_target"] = {
-        "step": "duration",
-        "data": {}
-    }
-    await query.edit_message_text(
-        "📝 *Atur Target Tabungan Baru*\n\n"
-        "Masukkan durasi menabung dalam hari (contoh: 365):",
-        parse_mode="Markdown"
-    )
-
 async def show_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(update, CallbackQuery):
         query = update
@@ -605,14 +601,12 @@ async def download_riwayat(query: CallbackQuery, context: ContextTypes.DEFAULT_T
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
-    # Add handlers
+    # Add handlers in correct order
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), handle_target_duration))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), handle_daily_amount))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(CallbackQueryHandler(calendar_handler, pattern="^calendar_"))
-    
-    # Message handlers with priority
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), handle_target_duration))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), handle_daily_amount))
 
     logger.info("Bot sedang berjalan...")
     application.run_polling()
