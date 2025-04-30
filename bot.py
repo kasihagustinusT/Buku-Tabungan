@@ -277,7 +277,6 @@ async def handle_target_duration(update: Update, context: ContextTypes.DEFAULT_T
             "❌ Durasi harus berupa angka positif. Silakan coba lagi.\n"
             "Contoh: 365"
         )
-logger.info(f"User data: {context.user_data}")  # Tambahkan di awal handle_daily_amount
 async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Periksa apakah user sedang dalam proses setting target
     if not context.user_data.get("setting_target"):
@@ -315,6 +314,9 @@ async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
         start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
         estimasi_selesai = start_date_obj + timedelta(days=duration)
         
+        # Create the main menu keyboard
+        keyboard = main_menu(user_id)
+        
         await update.message.reply_text(
             f"🎯 *Target berhasil disimpan!*\n\n"
             f"📅 Mulai: {start_date_obj.strftime('%d %b %Y')}\n"
@@ -322,12 +324,31 @@ async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"⏳ Durasi: {duration} hari\n"
             f"💰 Per Hari: {format_rupiah(amount)}\n"
             f"🎯 Target Total: {format_rupiah(duration * amount)}\n\n"
-            f"Silakan mulai menabung sekarang!",
-            parse_mode="Markdown"
+            f"Silakan mulai menabung sekarang dengan memilih menu di bawah:",
+            parse_mode="Markdown",
+            reply_markup=keyboard
         )
         
-        # Redirect to main menu
-        await start(update, context)
+        # Automatically check today's savings if it's not already saved
+        status = load_status()
+        today = today_key()
+        if today not in status or not status[today].get("saved"):
+            status[today] = {"saved": True, "amount": amount}
+            save_status(status)
+            
+            streak = hitung_beruntun(status)
+            total_hari = sum(1 for v in status.values() if v.get("saved"))
+            total_uang = sum(v.get("amount", 0) for v in status.values() if v.get("saved"))
+            
+            await update.message.reply_text(
+                f"✅ *Nabung hari ini otomatis dicatat!*\n\n"
+                f"💵 Jumlah: {format_rupiah(amount)}\n"
+                f"🔥 *Streak:* {streak} hari berturut-turut\n"
+                f"📊 *Total:* {total_hari} hari ({format_rupiah(total_uang)})\n\n"
+                f"Teruskan kebiasaan baik ini!",
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
         
     except ValueError:
         await update.message.reply_text(
