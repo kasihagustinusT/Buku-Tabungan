@@ -3,10 +3,20 @@ import json
 import os
 import csv
 from datetime import date, datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputFile,
+    CallbackQuery
+)
 from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, CallbackContext, 
-    MessageHandler, filters, ContextTypes
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+    ContextTypes
 )
 
 # Setup logging
@@ -22,7 +32,7 @@ STATUS_FILE = "status.json"
 TARGET_FILE = "target.json"
 DEFAULT_NABUNG_PER_HARI = 20000
 
-# === Fungsi Bantu ===
+# ==================== FUNGSI BANTU ====================
 def load_status() -> dict:
     """Memuat status tabungan dari file JSON"""
     try:
@@ -84,7 +94,7 @@ def format_rupiah(nominal: int) -> str:
     """Format nominal menjadi string Rupiah"""
     return f"Rp{nominal:,}".replace(",", ".")
 
-# === Menu Utama ===
+# ==================== MENU UTAMA ====================
 def main_menu() -> InlineKeyboardMarkup:
     """Membuat menu utama dengan inline keyboard"""
     keyboard = [
@@ -98,50 +108,55 @@ def main_menu() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# === Command Handlers ===
+# ==================== COMMAND HANDLERS ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler untuk command /start"""
     text = (
-        "Selamat datang di Buku Tabungan Digital!\n\n"
-        "Saya akan membantu Anda mencatat dan melacak tabungan harian Anda.\n"
-        "Gunakan tombol di bawah untuk mulai:"
+        "💰 *Buku Tabungan Digital* 💰\n\n"
+        "Selamat datang di bot tabungan harian!\n"
+        "Saya akan membantu Anda mencatat dan melacak tabungan harian Anda.\n\n"
+        "Gunakan menu di bawah untuk mulai:"
     )
     
     if update.message:
-        await update.message.reply_text(text, reply_markup=main_menu())
+        await update.message.reply_text(text, reply_markup=main_menu(), parse_mode="Markdown")
     elif update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=main_menu())
+        await update.callback_query.edit_message_text(text, reply_markup=main_menu(), parse_mode="Markdown")
 
-# === Button Handlers ===
+# ==================== BUTTON HANDLERS ====================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler untuk semua callback query dari inline keyboard"""
     query = update.callback_query
     await query.answer()
     data = query.data
 
-    handlers = {
-        'check_today': handle_check_today,
-        'tambah_sebelum': tambah_sebelum,
-        'progress': show_progress,
-        'statistik': show_statistik,
-        'target_menu': show_target_menu,
-        'atur_target': atur_target_handler,
-        'lihat_target': show_target_custom,
-        'back_to_menu': start,
-        'riwayat': show_riwayat,
-        'download_riwayat': download_riwayat
-    }
-
-    handler = handlers.get(data)
-    if handler:
-        await handler(query, context)
+    if data == 'check_today':
+        await handle_check_today(query, context)
+    elif data == 'tambah_sebelum':
+        await tambah_sebelum(query, context)
+    elif data == 'progress':
+        await show_progress(query, context)
+    elif data == 'statistik':
+        await show_statistik(query, context)
+    elif data == 'target_menu':
+        await show_target_menu(query, context)
+    elif data == 'atur_target':
+        await atur_target_handler(query, context)
+    elif data == 'lihat_target':
+        await show_target_custom(query, context)
+    elif data == 'back_to_menu':
+        await start(update, context)
+    elif data == 'riwayat':
+        await show_riwayat(query, context)
+    elif data == 'download_riwayat':
+        await download_riwayat(query, context)
     else:
-        logger.warning(f"Callback data tidak dikenali: {data}")
         await query.edit_message_text("Perintah tidak dikenali. Silakan coba lagi.", reply_markup=main_menu())
 
-async def handle_check_today(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handler untuk mencatat tabungan hari ini"""
+# ==================== FUNGSI TABUNGAN ====================
+async def handle_check_today(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mencatat tabungan hari ini"""
     status = load_status()
     today = today_key()
     
@@ -157,15 +172,16 @@ async def handle_check_today(query: Update.CallbackQuery, context: ContextTypes.
     total_uang = total_hari * DEFAULT_NABUNG_PER_HARI
     
     response = (
-        f"✅ Nabung hari ini berhasil dicatat!\n"
-        f"🔥 Streak: {streak} hari berturut-turut\n"
-        f"📊 Total: {total_hari} hari ({format_rupiah(total_uang)})"
+        f"✅ *Nabung hari ini berhasil dicatat!*\n\n"
+        f"🔥 *Streak:* {streak} hari berturut-turut\n"
+        f"📊 *Total:* {total_hari} hari ({format_rupiah(total_uang)})\n\n"
+        f"Teruskan kebiasaan baik ini!"
     )
     
-    await query.edit_message_text(response, reply_markup=main_menu())
+    await query.edit_message_text(response, reply_markup=main_menu(), parse_mode="Markdown")
 
-async def tambah_sebelum(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handler untuk mencatat tabungan hari sebelumnya"""
+async def tambah_sebelum(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mencatat tabungan hari sebelumnya"""
     status = load_status()
     kemarin = (date.today() - timedelta(days=1)).strftime("%d-%b-%Y")
     
@@ -177,27 +193,29 @@ async def tambah_sebelum(query: Update.CallbackQuery, context: ContextTypes.DEFA
     save_status(status)
     
     await query.edit_message_text(
-        "✅ Nabung kemarin berhasil ditambahkan!", 
-        reply_markup=main_menu()
+        "✅ *Nabung kemarin berhasil ditambahkan!*",
+        reply_markup=main_menu(),
+        parse_mode="Markdown"
     )
 
-async def show_progress(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menampilkan progress tabungan keseluruhan"""
+async def show_progress(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menampilkan progress tabungan"""
     status = load_status()
     total_hari = sum(1 for v in status.values() if v.get("saved"))
     total_uang = total_hari * DEFAULT_NABUNG_PER_HARI
     streak = hitung_beruntun(status)
     
     response = (
-        f"📊 Progress Tabungan\n\n"
-        f"✅ Hari menabung: {total_hari}\n"
-        f"💰 Total tabungan: {format_rupiah(total_uang)}\n"
-        f"🔥 Streak saat ini: {streak} hari"
+        f"📊 *Progress Tabungan*\n\n"
+        f"✅ *Hari menabung:* {total_hari}\n"
+        f"💰 *Total tabungan:* {format_rupiah(total_uang)}\n"
+        f"🔥 *Streak saat ini:* {streak} hari\n\n"
+        f"Terus semangat menabung!"
     )
     
-    await query.edit_message_text(response, reply_markup=main_menu())
+    await query.edit_message_text(response, reply_markup=main_menu(), parse_mode="Markdown")
 
-async def show_statistik(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def show_statistik(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Menampilkan statistik bulan ini"""
     status = load_status()
     bulan_ini = date.today().strftime("%b-%Y")
@@ -205,23 +223,23 @@ async def show_statistik(query: Update.CallbackQuery, context: ContextTypes.DEFA
     total_hari = len(hari_nabung)
     total_uang = total_hari * DEFAULT_NABUNG_PER_HARI
     
-    # Hitung persentase dari hari yang sudah berlalu
     today = date.today()
     first_day = today.replace(day=1)
     days_passed = (today - first_day).days + 1
     persentase = (total_hari / days_passed) * 100 if days_passed > 0 else 0
     
     response = (
-        f"📅 Statistik Bulan {bulan_ini}\n\n"
-        f"📆 Hari berlalu: {days_passed}\n"
-        f"✅ Hari nabung: {total_hari}\n"
-        f"💰 Total: {format_rupiah(total_uang)}\n"
-        f"📈 Persentase: {persentase:.1f}%"
+        f"📅 *Statistik Bulan {bulan_ini}*\n\n"
+        f"📆 *Hari berlalu:* {days_passed}\n"
+        f"✅ *Hari nabung:* {total_hari}\n"
+        f"💰 *Total:* {format_rupiah(total_uang)}\n"
+        f"📈 *Persentase:* {persentase:.1f}%\n\n"
+        f"Targetkan {100-persentase:.1f}% lagi untuk menyempurnakan bulan ini!"
     )
     
-    await query.edit_message_text(response, reply_markup=main_menu())
+    await query.edit_message_text(response, reply_markup=main_menu(), parse_mode="Markdown")
 
-async def show_riwayat(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def show_riwayat(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Menampilkan riwayat tabungan"""
     status = load_status()
     daftar = sorted(
@@ -234,30 +252,27 @@ async def show_riwayat(query: Update.CallbackQuery, context: ContextTypes.DEFAUL
         await query.edit_message_text("Belum ada riwayat menabung.", reply_markup=main_menu())
         return
     
-    # Batasi tampilan riwayat untuk mencegah pesan terlalu panjang
     riwayat_terakhir = daftar[:30]
     total_hari = len(daftar)
     total_uang = total_hari * DEFAULT_NABUNG_PER_HARI
     
     response = (
-        f"🗂️ Riwayat Menabung (30 terakhir dari {total_hari} hari)\n"
-        f"💰 Total: {format_rupiah(total_uang)}\n\n" +
+        f"🗂️ *Riwayat Menabung* (30 terakhir dari {total_hari} hari)\n"
+        f"💰 *Total:* {format_rupiah(total_uang)}\n\n" +
         "\n".join(f"✅ {tgl}" for tgl in riwayat_terakhir)
     )
     
-    await query.edit_message_text(response, reply_markup=main_menu())
+    await query.edit_message_text(response, reply_markup=main_menu(), parse_mode="Markdown")
 
-async def download_riwayat(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Membuat dan mengirim file CSV riwayat tabungan"""
+async def download_riwayat(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mengirim file CSV riwayat tabungan"""
     status = load_status()
     
-    # Urutkan berdasarkan tanggal
     sorted_dates = sorted(
         (k for k, v in status.items() if v.get("saved")),
         key=lambda x: datetime.strptime(x, "%d-%b-%Y")
     )
     
-    # Buat file CSV sementara
     temp_file = "riwayat_tabungan.csv"
     try:
         with open(temp_file, "w", newline='', encoding='utf-8') as f:
@@ -267,37 +282,37 @@ async def download_riwayat(query: Update.CallbackQuery, context: ContextTypes.DE
                 amount = status[tgl].get("amount", DEFAULT_NABUNG_PER_HARI)
                 writer.writerow([tgl, "Ya", format_rupiah(amount)])
         
-        # Kirim file
         with open(temp_file, "rb") as f:
             await query.message.reply_document(
                 document=InputFile(f, filename="riwayat_tabungan.csv"),
-                caption="Berikut riwayat tabungan Anda"
+                caption="📊 Berikut riwayat tabungan Anda"
             )
     except Exception as e:
         logger.error(f"Gagal membuat file riwayat: {e}")
-        await query.message.reply_text("Maaf, gagal membuat file riwayat.")
+        await query.message.reply_text("❌ Maaf, gagal membuat file riwayat.")
     finally:
-        # Hapus file sementara
         if os.path.exists(temp_file):
             os.remove(temp_file)
 
-# === Target Menu & Handlers ===
-async def show_target_menu(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menampilkan menu target tabungan"""
+# ==================== TARGET HANDLERS ====================
+async def show_target_menu(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menampilkan menu target"""
     keyboard = [
         [InlineKeyboardButton("📝 Atur Target Baru", callback_data='atur_target')],
         [InlineKeyboardButton("📊 Lihat Progress Target", callback_data='lihat_target')],
         [InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data='back_to_menu')]
     ]
     await query.edit_message_text(
-        "🎯 Menu Target Nabung\n\nPilih opsi di bawah:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "🎯 *Menu Target Nabung*\n\nPilih opsi di bawah:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
     )
 
-async def atur_target_handler(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handler untuk memulai proses pengaturan target"""
+async def atur_target_handler(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Meminta input target baru"""
     await query.edit_message_text(
-        "Silakan kirim durasi menabung dan tanggal mulai dalam format:\n\n"
+        "📝 *Atur Target Tabungan Baru*\n\n"
+        "Silakan kirim dalam format:\n\n"
         "`<durasi_hari> <tanggal_mulai> <jumlah_per_hari>`\n\n"
         "Contoh: `365 2025-05-01 20000`\n\n"
         "Artinya: menabung selama 365 hari mulai 1 Mei 2025 dengan Rp20.000 per hari.",
@@ -306,7 +321,7 @@ async def atur_target_handler(query: Update.CallbackQuery, context: ContextTypes
     context.user_data["awaiting_target_input"] = True
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handler untuk input teks target tabungan"""
+    """Memproses input target baru"""
     if not context.user_data.get("awaiting_target_input"):
         return
 
@@ -340,31 +355,40 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         
         save_target(targets)
         
+        estimasi_selesai = mulai + timedelta(days=durasi_hari)
+        
         response = (
-            f"🎯 Target berhasil disimpan!\n\n"
-            f"📅 Mulai: {mulai.strftime('%d %b %Y')}\n"
-            f"⏳ Durasi: {durasi_hari} hari\n"
-            f"💰 Per Hari: {format_rupiah(per_hari)}\n"
-            f"🎯 Target Total: {format_rupiah(durasi_hari * per_hari)}"
+            f"🎯 *Target berhasil disimpan!*\n\n"
+            f"📅 *Mulai:* {mulai.strftime('%d %b %Y')}\n"
+            f"📆 *Selesai:* {estimasi_selesai.strftime('%d %b %Y')}\n"
+            f"⏳ *Durasi:* {durasi_hari} hari\n"
+            f"💰 *Per Hari:* {format_rupiah(per_hari)}\n"
+            f"🎯 *Target Total:* {format_rupiah(durasi_hari * per_hari)}\n\n"
+            f"Gunakan menu 'Lihat Progress Target' untuk memantau perkembangan!"
         )
         
-        await update.message.reply_text(response)
+        await update.message.reply_text(response, parse_mode="Markdown")
         
     except ValueError as e:
         error_msg = (
-            "Format input tidak valid. Pastikan format:\n\n"
+            "❌ *Format input tidak valid*\n\n"
+            "Pastikan format:\n\n"
             "`<durasi_hari> <tahun-bulan-tanggal> <jumlah_per_hari>`\n\n"
-            f"Error: {str(e)}"
+            f"*Error:* {str(e)}\n\n"
+            "Contoh: `30 2025-01-01 10000`"
         )
         await update.message.reply_text(error_msg, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error menyimpan target: {e}")
-        await update.message.reply_text("Terjadi kesalahan saat menyimpan target. Silakan coba lagi.")
+        await update.message.reply_text(
+            "❌ Terjadi kesalahan saat menyimpan target. Silakan coba lagi.",
+            parse_mode="Markdown"
+        )
     
     context.user_data["awaiting_target_input"] = False
 
-async def show_target_custom(query: Update.CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menampilkan progress target tabungan pengguna"""
+async def show_target_custom(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menampilkan progress target"""
     status = load_status()
     targets = load_target()
     user_id = str(query.from_user.id)
@@ -385,7 +409,6 @@ async def show_target_custom(query: Update.CallbackQuery, context: ContextTypes.
     estimasi_selesai = mulai + timedelta(days=durasi)
     hari_ini = date.today()
     
-    # Hitung hari yang sudah berlalu sejak mulai
     if hari_ini < mulai:
         hari_sudah = 0
         persen = 0.0
@@ -393,10 +416,8 @@ async def show_target_custom(query: Update.CallbackQuery, context: ContextTypes.
         hari_sudah = min((hari_ini - mulai).days + 1, durasi)
         persen = hari_sudah / durasi
     
-    # Hitung tabungan yang seharusnya sudah terkumpul
     tabungan_seharusnya = per_hari * hari_sudah
     
-    # Hitung tabungan aktual
     tabungan_aktual = 0
     for tgl_str, data in status.items():
         if data.get("saved"):
@@ -404,7 +425,6 @@ async def show_target_custom(query: Update.CallbackQuery, context: ContextTypes.
             if mulai <= tgl <= min(hari_ini, estimasi_selesai - timedelta(days=1)):
                 tabungan_aktual += data.get("amount", DEFAULT_NABUNG_PER_HARI)
     
-    # Hitung persentase aktual vs target
     if tabungan_seharusnya > 0:
         persen_aktual = min(tabungan_aktual / tabungan_seharusnya, 1.0)
     else:
@@ -414,19 +434,20 @@ async def show_target_custom(query: Update.CallbackQuery, context: ContextTypes.
     bar_aktual = buat_progress_bar(persen_aktual)
     
     response = (
-        f"🎯 Progress Target Nabung\n\n"
-        f"📅 Periode: {mulai.strftime('%d %b %Y')} - {estimasi_selesai.strftime('%d %b %Y')}\n"
-        f"⏳ Durasi: {durasi} hari (hari ke-{hari_sudah})\n"
-        f"💰 Target Per Hari: {format_rupiah(per_hari)}\n"
-        f"🎯 Target Total: {format_rupiah(target_total)}\n\n"
-        f"📊 Progress Waktu:\n{bar_target} {persen*100:.1f}%\n\n"
-        f"💰 Tabungan Aktual: {format_rupiah(tabungan_aktual)}\n"
-        f"📈 Progress Tabungan:\n{bar_aktual} {persen_aktual*100:.1f}%"
+        f"📊 *Progress Target Nabung*\n\n"
+        f"📅 *Periode:* {mulai.strftime('%d %b %Y')} - {estimasi_selesai.strftime('%d %b %Y')}\n"
+        f"⏳ *Progress Waktu:* {hari_sudah}/{durasi} hari\n"
+        f"💰 *Target Harian:* {format_rupiah(per_hari)}\n"
+        f"🎯 *Target Total:* {format_rupiah(target_total)}\n\n"
+        f"⏱ *Progress Waktu:*\n{bar_target} {persen*100:.1f}%\n\n"
+        f"💵 *Tabungan Aktual:* {format_rupiah(tabungan_aktual)}\n"
+        f"📈 *Progress Tabungan:*\n{bar_aktual} {persen_aktual*100:.1f}%\n\n"
+        f"💪 *Selisih:* {format_rupiah(tabungan_aktual - tabungan_seharusnya)}"
     )
     
-    await query.edit_message_text(response, reply_markup=main_menu())
+    await query.edit_message_text(response, reply_markup=main_menu(), parse_mode="Markdown")
 
-# === Main ===
+# ==================== MAIN ====================
 def main() -> None:
     """Menjalankan bot"""
     application = Application.builder().token(TOKEN).build()
@@ -437,6 +458,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
 
     # Jalankan bot
+    logger.info("Bot sedang berjalan...")
     application.run_polling()
 
 if __name__ == '__main__':
