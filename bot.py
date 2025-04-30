@@ -95,7 +95,7 @@ async def button_handler(update: Update, context: CallbackContext):
     elif data == 'target_menu':
         await show_target_menu(query)
     elif data == 'atur_target':
-        await query.edit_message_text("Silakan kirim durasi menabung dan tanggal mulai dalam format:\n\n`365 2025-05-01`\n\nArtinya: menabung selama 365 hari mulai 1 Mei 2025.", parse_mode="Markdown")
+        await query.edit_message_text("Silakan kirim durasi menabung dan tanggal mulai dalam format:\n\n`365 2025-05-01 20000`\n\nArtinya: menabung selama 365 hari mulai 1 Mei 2025 dengan Rp20.000 per hari.", parse_mode="Markdown")
         context.user_data["awaiting_target_input"] = True
     elif data == 'lihat_target':
         await show_target_custom(query)
@@ -106,7 +106,7 @@ async def button_handler(update: Update, context: CallbackContext):
     elif data == 'download_riwayat':
         await download_riwayat(query)
 
-# === Tambahan Fungsi yang Hilang ===
+# === Fungsi Tambahan ===
 async def handle_check_today(query):
     status = load_status()
     today = today_key()
@@ -174,24 +174,27 @@ async def handle_text_input(update: Update, context: CallbackContext):
 
     try:
         parts = update.message.text.strip().split()
-        if len(parts) != 2:
+        if len(parts) != 3:
             raise ValueError("Input tidak valid")
 
         durasi_hari = int(parts[0])
         mulai = datetime.strptime(parts[1], "%Y-%m-%d").date()
-        if durasi_hari <= 0 or mulai > date.today() + timedelta(days=365*10):
-            raise ValueError("Durasi atau tanggal tidak valid")
+        per_hari = int(parts[2])
+
+        if durasi_hari <= 0 or per_hari <= 0:
+            raise ValueError("Durasi atau jumlah per hari tidak valid")
 
         targets = load_target()
         targets[str(update.effective_user.id)] = {
             "mulai": mulai.isoformat(),
-            "durasi": durasi_hari
+            "durasi": durasi_hari,
+            "per_hari": per_hari
         }
         save_target(targets)
 
-        await update.message.reply_text(f"🎯 Target berhasil disimpan: {durasi_hari} hari mulai {mulai.strftime('%d %b %Y')}")
+        await update.message.reply_text(f"🎯 Target berhasil disimpan: {durasi_hari} hari mulai {mulai.strftime('%d %b %Y')} dengan Rp{per_hari:,} per hari")
     except Exception as e:
-        await update.message.reply_text("Format salah. Contoh: `365 2025-05-01`", parse_mode="Markdown")
+        await update.message.reply_text("Format salah. Contoh: `365 2025-05-01 20000`", parse_mode="Markdown")
 
     context.user_data["awaiting_target_input"] = False
 
@@ -206,47 +209,34 @@ async def show_target_custom(query):
 
     mulai = datetime.strptime(targets[user_id]["mulai"], "%Y-%m-%d").date()
     durasi = targets[user_id]["durasi"]
+    per_hari = targets[user_id]["per_hari"]
+    estimasi_selesai = mulai + timedelta(days=durasi)
 
-    tanggal_target = [(mulai + timedelta(days=i)).strftime("%d-%b-%Y") for i in range(durasi)]
-    total_saved = sum(1 for t in tanggal_target if status.get(t, {}).get("saved", False))
-    persen = (total_saved / durasi) * 100
-    sisa = durasi - total_saved
+    total_simpan = per_hari * durasi
+    hari_ini = date.today()
+    hari_sudah = (hari_ini - mulai).days
+    target_hari_ini = per_hari * hari_sudah
 
-    pesan = (
-        f"🎯 Progress Target Nabung\n\n"
+    await query.edit_message_text(
+        f"🎯 Target Nabung:\n"
         f"📅 Mulai: {mulai.strftime('%d %b %Y')}\n"
         f"⏳ Durasi: {durasi} hari\n"
-        f"✅ Hari sudah nabung: {total_saved}\n"
-        f"📈 Progress: {persen:.2f}%\n"
-        f"📆 Hari tersisa: {sisa}\n"
-        f"💰 Total terkumpul: Rp{total_saved * NABUNG_PER_HARI:,}"
+        f"💰 Per Hari: Rp{per_hari:,}\n"
+        f"📆 Estimasi Selesai: {estimasi_selesai.strftime('%d %b %Y')}\n\n"
+        f"🗓 Hari Ini: {hari_ini.strftime('%d %b %Y')}\n"
+        f"🤑 Tabungan Hari Ini: Rp{target_hari_ini:,} dari target Rp{total_simpan:,}\n",
+        reply_markup=main_menu()
     )
-    await query.edit_message_text(pesan, reply_markup=main_menu())
 
 # === Main ===
 def main():
     application = Application.builder().token(TOKEN).build()
+
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("tambah", tambah_nabung))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
+
     application.run_polling()
-
-async def tambah_nabung(update: Update, context: CallbackContext):
-    today = today_key()
-    status = load_status()
-
-    if today in status and status[today].get("saved"):
-        await update.message.reply_text("⚠️ Kamu sudah menabung hari ini.")
-    else:
-        status[today] = {"saved": True}
-        save_status(status)
-
-        streak = hitung_beruntun(status)
-        await update.message.reply_text(
-            f"✅ Nabung hari ini berhasil dicatat!\n"
-            f"🔥 Kamu sudah menabung {streak} hari berturut-turut!"
-        )
 
 if __name__ == '__main__':
     main()
