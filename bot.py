@@ -106,7 +106,60 @@ async def button_handler(update: Update, context: CallbackContext):
     elif data == 'download_riwayat':
         await download_riwayat(query)
 
-# === Target Menu ===
+# === Tambahan Fungsi yang Hilang ===
+async def handle_check_today(query):
+    status = load_status()
+    today = today_key()
+    if today in status and status[today].get("saved"):
+        await query.edit_message_text("⚠️ Kamu sudah menabung hari ini.", reply_markup=main_menu())
+    else:
+        status[today] = {"saved": True}
+        save_status(status)
+        streak = hitung_beruntun(status)
+        await query.edit_message_text(
+            f"✅ Nabung hari ini berhasil dicatat!\n"
+            f"🔥 Kamu sudah menabung {streak} hari berturut-turut!",
+            reply_markup=main_menu()
+        )
+
+async def tambah_sebelum(query):
+    status = load_status()
+    kemarin = (date.today() - timedelta(days=1)).strftime("%d-%b-%Y")
+    if kemarin in status and status[kemarin].get("saved"):
+        await query.edit_message_text("⚠️ Kamu sudah menabung kemarin.", reply_markup=main_menu())
+    else:
+        status[kemarin] = {"saved": True}
+        save_status(status)
+        await query.edit_message_text("✅ Nabung kemarin berhasil ditambahkan!", reply_markup=main_menu())
+
+async def show_progress(query):
+    status = load_status()
+    total = sum(1 for v in status.values() if v.get("saved"))
+    total_uang = total * NABUNG_PER_HARI
+    await query.edit_message_text(f"📊 Total hari menabung: {total}\n💰 Total tabungan: Rp{total_uang:,}", reply_markup=main_menu())
+
+async def show_statistik(query):
+    status = load_status()
+    bulan_ini = date.today().strftime("%b-%Y")
+    jumlah = sum(1 for k, v in status.items() if bulan_ini in k and v.get("saved"))
+    await query.edit_message_text(f"📅 Statistik Bulan {bulan_ini}\n✅ Total hari nabung: {jumlah}", reply_markup=main_menu())
+
+async def show_riwayat(query):
+    status = load_status()
+    daftar = sorted((k for k, v in status.items() if v.get("saved")), reverse=True)
+    pesan = "🗂️ Riwayat Menabung:\n\n" + "\n".join(f"✅ {tgl}" for tgl in daftar[-30:]) if daftar else "Belum ada data."
+    await query.edit_message_text(pesan, reply_markup=main_menu())
+
+async def download_riwayat(query):
+    status = load_status()
+    isi = "Tanggal,Nabung\n" + "\n".join(f"{k},Yes" for k, v in status.items() if v.get("saved"))
+    with open("riwayat.csv", "w") as f:
+        f.write(isi)
+    with open("riwayat.csv", "rb") as f:
+        await query.message.reply_document(InputFile(f, filename="riwayat.csv"))
+    os.remove("riwayat.csv")
+
+# === Target Menu & Input ===
 async def show_target_menu(query):
     keyboard = [
         [InlineKeyboardButton("📝 Atur Target Baru", callback_data='atur_target')],
@@ -170,8 +223,6 @@ async def show_target_custom(query):
     )
     await query.edit_message_text(pesan, reply_markup=main_menu())
 
-# === Lain-lain tetap sama === (handle_check_today, tambah_sebelum, show_progress, show_statistik, show_riwayat, download_riwayat, tambah_nabung)
-
 # === Main ===
 def main():
     application = Application.builder().token(TOKEN).build()
@@ -180,7 +231,7 @@ def main():
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     application.run_polling()
-    
+
 async def tambah_nabung(update: Update, context: CallbackContext):
     today = today_key()
     status = load_status()
