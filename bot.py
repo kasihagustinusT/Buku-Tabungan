@@ -357,6 +357,13 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         
         estimasi_selesai = mulai + timedelta(days=durasi_hari)
         
+        # Buat keyboard untuk kembali ke menu target
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Kembali ke Menu Target", callback_data='target_menu')],
+            [InlineKeyboardButton("🏠 Menu Utama", callback_data='back_to_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         response = (
             f"🎯 *Target berhasil disimpan!*\n\n"
             f"📅 *Mulai:* {mulai.strftime('%d %b %Y')}\n"
@@ -367,7 +374,11 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             f"Gunakan menu 'Lihat Progress Target' untuk memantau perkembangan!"
         )
         
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await update.message.reply_text(
+            response, 
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
         
     except ValueError as e:
         error_msg = (
@@ -411,10 +422,10 @@ async def show_target_custom(query: CallbackQuery, context: ContextTypes.DEFAULT
     
     if hari_ini < mulai:
         hari_sudah = 0
-        persen = 0.0
+        persen_waktu = 0.0
     else:
         hari_sudah = min((hari_ini - mulai).days + 1, durasi)
-        persen = hari_sudah / durasi
+        persen_waktu = hari_sudah / durasi
     
     tabungan_seharusnya = per_hari * hari_sudah
     
@@ -425,13 +436,14 @@ async def show_target_custom(query: CallbackQuery, context: ContextTypes.DEFAULT
             if mulai <= tgl <= min(hari_ini, estimasi_selesai - timedelta(days=1)):
                 tabungan_aktual += data.get("amount", DEFAULT_NABUNG_PER_HARI)
     
-    if tabungan_seharusnya > 0:
-        persen_aktual = min(tabungan_aktual / tabungan_seharusnya, 1.0)
+    # Perbaikan perhitungan persentase tabungan
+    if target_total > 0:
+        persen_tabungan = tabungan_aktual / target_total
     else:
-        persen_aktual = 0.0
+        persen_tabungan = 0.0
     
-    bar_target = buat_progress_bar(persen)
-    bar_aktual = buat_progress_bar(persen_aktual)
+    bar_waktu = buat_progress_bar(persen_waktu)
+    bar_tabungan = buat_progress_bar(persen_tabungan)
     
     response = (
         f"📊 *Progress Target Nabung*\n\n"
@@ -439,10 +451,9 @@ async def show_target_custom(query: CallbackQuery, context: ContextTypes.DEFAULT
         f"⏳ *Progress Waktu:* {hari_sudah}/{durasi} hari\n"
         f"💰 *Target Harian:* {format_rupiah(per_hari)}\n"
         f"🎯 *Target Total:* {format_rupiah(target_total)}\n\n"
-        f"⏱ *Progress Waktu:*\n{bar_target} {persen*100:.1f}%\n\n"
+        f"⏱ *Progress Waktu:*\n{bar_waktu} {persen_waktu*100:.1f}%\n\n"
         f"💵 *Tabungan Aktual:* {format_rupiah(tabungan_aktual)}\n"
-        f"📈 *Progress Tabungan:*\n{bar_aktual} {persen_aktual*100:.1f}%\n\n"
-        f"💪 *Selisih:* {format_rupiah(tabungan_aktual - tabungan_seharusnya)}"
+        f"📈 *Progress Tabungan:*\n{bar_tabungan} {persen_tabungan*100:.1f}%"
     )
     
     await query.edit_message_text(response, reply_markup=main_menu(), parse_mode="Markdown")
