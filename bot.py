@@ -111,6 +111,15 @@ def main_menu(user_id: str = None) -> InlineKeyboardMarkup:
     
     return InlineKeyboardMarkup(keyboard)
 
+def target_menu_keyboard() -> InlineKeyboardMarkup:
+    keyboard = [
+        [InlineKeyboardButton("📝 Atur Target Baru", callback_data='atur_target')],
+        [InlineKeyboardButton("📊 Lihat Progress Target", callback_data='lihat_target')],
+        [InlineKeyboardButton("🔄 Reset Target", callback_data='reset_target')],
+        [InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data='back_to_menu')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 # Command Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
@@ -139,23 +148,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     data = query.data
     user_id = query.from_user.id
 
-    handlers = {
-        'check_today': handle_check_today,
-        'tambah_sebelum': tambah_sebelum,
-        'progress': show_progress,
-        'statistik': show_statistik,
-        'target_menu': show_target_menu,
-        'atur_target': atur_target_handler,
-        'lihat_target': show_target_custom,
-        'reset_target': reset_target_handler,
-        'back_to_menu': start,
-        'riwayat': show_riwayat,
-        'download_riwayat': download_riwayat
-    }
-
-    handler = handlers.get(data)
-    if handler:
-        await handler(query, context)
+    if data == 'check_today':
+        await handle_check_today(query, context)
+    elif data == 'tambah_sebelum':
+        await tambah_sebelum(query, context)
+    elif data == 'progress':
+        await show_progress(query, context)
+    elif data == 'statistik':
+        await show_statistik(query, context)
+    elif data == 'target_menu':
+        await show_target_menu(query, context)
+    elif data == 'atur_target':
+        await atur_target_handler(query, context)
+    elif data == 'lihat_target':
+        await show_target_custom(query, context)
+    elif data == 'reset_target':
+        await reset_target_handler(query, context)
+    elif data == 'back_to_menu':
+        await start(update, context)
+    elif data == 'riwayat':
+        await show_riwayat(query, context)
+    elif data == 'download_riwayat':
+        await download_riwayat(query, context)
     else:
         await query.edit_message_text("Perintah tidak dikenali. Silakan coba lagi.", reply_markup=main_menu(user_id))
 
@@ -336,22 +350,10 @@ async def show_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if isinstance(update, CallbackQuery):
         query = update
         user_id = query.from_user.id
-        message = query.message
     else:
         user_id = update.effective_user.id
-        message = update.message
     
     target, _ = get_user_target(user_id)
-    
-    keyboard = [
-        [InlineKeyboardButton("📝 Atur Target Baru", callback_data='atur_target')]
-    ]
-    
-    if target:
-        keyboard.insert(0, [InlineKeyboardButton("📊 Lihat Progress Target", callback_data='lihat_target')])
-        keyboard.insert(1, [InlineKeyboardButton("🔄 Reset Target", callback_data='reset_target')])
-    
-    keyboard.append([InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data='back_to_menu')])
     
     text = "🎯 *Menu Target Nabung*"
     if target:
@@ -360,12 +362,12 @@ async def show_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         text += f"\n💰 Target Harian: {format_rupiah(target['per_hari'])}"
         text += f"\n🎯 Total Target: {format_rupiah(target['target_total'])}"
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = target_menu_keyboard()
     
     if isinstance(update, CallbackQuery):
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 async def atur_target_handler(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.edit_message_text(
@@ -508,11 +510,6 @@ async def show_target_custom(query: CallbackQuery, context: ContextTypes.DEFAULT
     bar_waktu = buat_progress_bar(persen_waktu)
     bar_tabungan = buat_progress_bar(persen_tabungan)
     
-    keyboard = [
-        [InlineKeyboardButton("🔄 Reset Target", callback_data='reset_target')],
-        [InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data='back_to_menu')]
-    ]
-    
     response = (
         f"📊 *Progress Target Nabung*\n\n"
         f"📅 *Periode:* {mulai.strftime('%d %b %Y')} - {estimasi_selesai.strftime('%d %b %Y')}\n"
@@ -526,7 +523,7 @@ async def show_target_custom(query: CallbackQuery, context: ContextTypes.DEFAULT
     
     await query.edit_message_text(
         response, 
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=target_menu_keyboard(),
         parse_mode="Markdown"
     )
 
