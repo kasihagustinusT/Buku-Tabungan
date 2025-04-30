@@ -93,11 +93,14 @@ def format_rupiah(nominal: int) -> str:
     """Format nominal menjadi string Rupiah"""
     return f"Rp{nominal:,}".replace(",", ".")
 
-def get_user_target(user_id: str) -> dict:
-    """Mengambil target pengguna"""
+def get_user_target(user_id: str) -> tuple:
+    """Mengambil target pengguna
+    Returns:
+        tuple: (user_target_dict, all_targets_dict)
+    """
     targets = load_target()
-    return targets.get(str(user_id), targets
-
+    return targets.get(str(user_id)), targets
+    
 # ==================== MENU UTAMA ====================
 def main_menu(user_id: str = None) -> InlineKeyboardMarkup:
     """Membuat menu utama dengan inline keyboard"""
