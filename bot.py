@@ -180,6 +180,22 @@ def main():
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     application.run_polling()
+    
+async def tambah_nabung(update: Update, context: CallbackContext):
+    today = today_key()
+    status = load_status()
+
+    if today in status and status[today].get("saved"):
+        await update.message.reply_text("⚠️ Kamu sudah menabung hari ini.")
+    else:
+        status[today] = {"saved": True}
+        save_status(status)
+
+        streak = hitung_beruntun(status)
+        await update.message.reply_text(
+            f"✅ Nabung hari ini berhasil dicatat!\n"
+            f"🔥 Kamu sudah menabung {streak} hari berturut-turut!"
+        )
 
 if __name__ == '__main__':
     main()
