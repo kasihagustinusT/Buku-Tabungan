@@ -1,86 +1,57 @@
-import json
 import logging
-from datetime import datetime, date
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes
-)
+from datetime import datetime
+import json
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import CallbackContext
 
-# Token Telegram Anda
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-
-# Inisialisasi logger
+# Mengonfigurasi logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Helper
-def format_rupiah(amount: int) -> str:
-    return f"Rp{amount:,.0f}".replace(",", ".")
+# Token bot Telegram
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
-def buat_progress_bar(progress: float, length: int = 10) -> str:
-    filled_length = int(length * progress)
-    bar = "▓" * filled_length + "░" * (length - filled_length)
+# Helper Functions
+def load_target():
+    try:
+        with open("target.json", "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {}
+
+def save_target(targets):
+    with open("target.json", "w") as file:
+        json.dump(targets, file)
+
+def format_rupiah(amount):
+    return f"Rp {amount:,.0f}"
+
+def buat_progress_bar(progress):
+    bar = "▓" * int(progress * 10) + "░" * (10 - int(progress * 10))
     return bar
 
-def main_menu(user_id: int) -> InlineKeyboardMarkup:
-    keyboard = [
-        [InlineKeyboardButton("📥 Catat Tabungan", callback_data="catat_tabungan")],
+def get_user_target(user_id):
+    targets = load_target()
+    return targets.get(str(user_id)), targets
+
+def main_menu(user_id):
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎯 Target Nabung", callback_data="target_menu")],
-        [InlineKeyboardButton("📊 Lihat Statistik", callback_data="statistik")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+        [InlineKeyboardButton("❌ Keluar", callback_data="exit")]
+    ])
 
-# File handler
-def load_status() -> dict:
-    try:
-        with open("status.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_status(data: dict):
-    with open("status.json", "w") as f:
-        json.dump(data, f)
-
-def load_target() -> dict:
-    try:
-        with open("target.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-def save_target(data: dict):
-    with open("target.json", "w") as f:
-        json.dump(data, f)
-
-def get_user_target(user_id: int):
-    data = load_target()
-    return data.get(str(user_id)), data
-
-# Command Start
+# Command Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
-    text = f"Selamat datang di *Buku Tabungan*, {update.effective_user.first_name}!"
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=main_menu(user_id))
-
-# Callback Handler
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-
-    if data == "target_menu":
-        await show_target_menu(query, context)
-    elif data == "atur_target":
-        await atur_target_handler(query, context)
-    elif data == "lihat_target":
-        await show_target_custom(query, context)
-    elif data == "reset_target":
-        await reset_target_handler(query, context)
+    await update.message.reply_text(
+        "Selamat datang di Bot Buku Tabungan!\n\nSilakan pilih menu di bawah ini:",
+        reply_markup=main_menu(user_id)
+    )
 
 # Target Menu Functions
 async def show_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
     keyboard = [
         [InlineKeyboardButton("➕ Atur Target Baru", callback_data='atur_target')],
         [InlineKeyboardButton("📄 Lihat Target", callback_data='lihat_target')],
@@ -95,6 +66,7 @@ async def show_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def atur_target_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update if isinstance(update, CallbackQuery) else update.callback_query
+    user_id = query.from_user.id
     context.user_data["target_step"] = "tanggal_mulai"
     await query.edit_message_text(
         "🗓️ Kirim tanggal mulai (format: YYYY-MM-DD)\nContoh: 2025-05-01",
@@ -113,7 +85,7 @@ async def atur_target_proses(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("📆 Kirim durasi menabung (dalam hari)\nContoh: 90")
         except ValueError:
             await update.message.reply_text("❌ Format tanggal tidak valid. Gunakan YYYY-MM-DD")
-
+    
     elif step == "durasi":
         try:
             duration = int(update.message.text.strip())
@@ -121,10 +93,10 @@ async def atur_target_proses(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 raise ValueError
             context.user_data["duration"] = duration
             context.user_data["target_step"] = "per_hari"
-            await update.message.reply_text("💸 Kirim jumlah tabungan per hari (tanpa Rp)\nContoh: 10000")
+            await update.message.reply_text("💸 Kirim jumlah tabungan per hari (dalam angka, tanpa Rp)\nContoh: 10000")
         except ValueError:
             await update.message.reply_text("❌ Durasi harus berupa angka positif.")
-
+    
     elif step == "per_hari":
         try:
             per_hari = int(update.message.text.strip())
@@ -132,7 +104,7 @@ async def atur_target_proses(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 raise ValueError
             context.user_data["per_hari"] = per_hari
 
-            # Simpan target
+            # Simpan ke file target.json
             targets = load_target()
             total = per_hari * context.user_data["duration"]
             targets[str(user_id)] = {
@@ -145,11 +117,11 @@ async def atur_target_proses(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
             bar = buat_progress_bar(0)
             await update.message.reply_text(
-                f"✅ Target disimpan!\n\n"
+                f"✅ Target berhasil disimpan!\n\n"
                 f"🗓️ Mulai: {context.user_data['start_date']}\n"
                 f"📆 Durasi: {context.user_data['duration']} hari\n"
                 f"💸 Per hari: {format_rupiah(per_hari)}\n"
-                f"🎯 Total: {format_rupiah(total)}\n"
+                f"🎯 Estimasi total: {format_rupiah(total)}\n"
                 f"Progress: {bar}",
                 reply_markup=main_menu(user_id)
             )
@@ -194,7 +166,7 @@ async def reset_target_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await query.edit_message_text("⚠️ Tidak ada target untuk dihapus.", reply_markup=main_menu(user_id))
 
-# Fungsi Main
+# Main function to run the bot
 def main():
     application = Application.builder().token(TOKEN).build()
 
