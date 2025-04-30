@@ -279,7 +279,12 @@ async def handle_target_duration(update: Update, context: ContextTypes.DEFAULT_T
         )
 
 async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.user_data.get("setting_target") or context.user_data["setting_target"].get("step") != "daily_amount":
+    # Periksa apakah user sedang dalam proses setting target
+    if not context.user_data.get("setting_target"):
+        return
+    
+    # Pastikan kita berada di step yang benar
+    if context.user_data["setting_target"].get("step") != "daily_amount":
         return
     
     try:
@@ -329,7 +334,6 @@ async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
             "❌ Jumlah harus berupa angka positif. Silakan coba lagi.\n"
             "Contoh: 20000"
         )
-
 # Target Handlers
 async def show_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(update, CallbackQuery):
