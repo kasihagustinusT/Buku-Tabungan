@@ -57,6 +57,10 @@ def save_target(data):
     with open(TARGET_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+def buat_progress_bar(persen, panjang=10):
+    blok_terisi = int(persen * panjang)
+    return "▓" * blok_terisi + "░" * (panjang - blok_terisi)
+
 # === Menu Utama ===
 def main_menu():
     keyboard = [
@@ -217,6 +221,9 @@ async def show_target_custom(query):
     hari_sudah = (hari_ini - mulai).days
     target_hari_ini = per_hari * hari_sudah
 
+    persen = min(hari_sudah / durasi, 1.0)
+    bar = buat_progress_bar(persen)
+
     await query.edit_message_text(
         f"🎯 Target Nabung:\n"
         f"📅 Mulai: {mulai.strftime('%d %b %Y')}\n"
@@ -224,7 +231,8 @@ async def show_target_custom(query):
         f"💰 Per Hari: Rp{per_hari:,}\n"
         f"📆 Estimasi Selesai: {estimasi_selesai.strftime('%d %b %Y')}\n\n"
         f"🗓 Hari Ini: {hari_ini.strftime('%d %b %Y')}\n"
-        f"🤑 Tabungan Hari Ini: Rp{target_hari_ini:,} dari target Rp{total_simpan:,}\n",
+        f"🤑 Tabungan Hari Ini: Rp{target_hari_ini:,} dari target Rp{total_simpan:,}\n\n"
+        f"Progress: {bar} {persen*100:.1f}%",
         reply_markup=main_menu()
     )
 
