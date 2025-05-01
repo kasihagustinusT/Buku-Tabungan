@@ -277,13 +277,9 @@ async def handle_target_duration(update: Update, context: ContextTypes.DEFAULT_T
             "❌ Durasi harus berupa angka positif. Silakan coba lagi.\n"
             "Contoh: 365"
         )
+
 async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Periksa apakah user sedang dalam proses setting target
-    if not context.user_data.get("setting_target"):
-        return
-    
-    # Pastikan kita berada di step yang benar
-    if context.user_data["setting_target"].get("step") != "daily_amount":
+    if not context.user_data.get("setting_target") or context.user_data["setting_target"].get("step") != "daily_amount":
         return
     
     try:
@@ -314,9 +310,6 @@ async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
         start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
         estimasi_selesai = start_date_obj + timedelta(days=duration)
         
-        # Create the main menu keyboard
-        keyboard = main_menu(user_id)
-        
         await update.message.reply_text(
             f"🎯 *Target berhasil disimpan!*\n\n"
             f"📅 Mulai: {start_date_obj.strftime('%d %b %Y')}\n"
@@ -324,37 +317,19 @@ async def handle_daily_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"⏳ Durasi: {duration} hari\n"
             f"💰 Per Hari: {format_rupiah(amount)}\n"
             f"🎯 Target Total: {format_rupiah(duration * amount)}\n\n"
-            f"Silakan mulai menabung sekarang dengan memilih menu di bawah:",
-            parse_mode="Markdown",
-            reply_markup=keyboard
+            f"Silakan mulai menabung sekarang!",
+            parse_mode="Markdown"
         )
         
-        # Automatically check today's savings if it's not already saved
-        status = load_status()
-        today = today_key()
-        if today not in status or not status[today].get("saved"):
-            status[today] = {"saved": True, "amount": amount}
-            save_status(status)
-            
-            streak = hitung_beruntun(status)
-            total_hari = sum(1 for v in status.values() if v.get("saved"))
-            total_uang = sum(v.get("amount", 0) for v in status.values() if v.get("saved"))
-            
-            await update.message.reply_text(
-                f"✅ *Nabung hari ini otomatis dicatat!*\n\n"
-                f"💵 Jumlah: {format_rupiah(amount)}\n"
-                f"🔥 *Streak:* {streak} hari berturut-turut\n"
-                f"📊 *Total:* {total_hari} hari ({format_rupiah(total_uang)})\n\n"
-                f"Teruskan kebiasaan baik ini!",
-                parse_mode="Markdown",
-                reply_markup=keyboard
-            )
+        # Redirect to main menu
+        await start(update, context)
         
     except ValueError:
         await update.message.reply_text(
             "❌ Jumlah harus berupa angka positif. Silakan coba lagi.\n"
             "Contoh: 20000"
         )
+
 # Target Handlers
 async def show_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(update, CallbackQuery):
@@ -536,7 +511,7 @@ async def show_statistik(query: CallbackQuery, context: ContextTypes.DEFAULT_TYP
     user_id = query.from_user.id
     status = load_status()
     bulan_ini = date.today().strftime("%b-%Y")
-    hari_nabung = [k for k, v in status.items() if bulan_ini in k and v.get("saved")]
+    hari_nabung = [k for k, v in status.items() if bulan_ini in k and v.get("saved"))
     total_hari = len(hari_nabung)
     total_uang = sum(v.get("amount", 0) for k, v in status.items() if bulan_ini in k and v.get("saved"))
     
@@ -627,11 +602,21 @@ def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     # Add handlers in correct order
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), handle_target_duration))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), handle_daily_amount))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(CallbackQueryHandler(calendar_handler, pattern="^calendar_"))
+    
+    # Add message handlers with correct filters
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$') & 
+        filters.create(lambda _, ctx: ctx.user_data.get("setting_target", {}).get("step") == "duration"),
+        handle_target_duration
+    ))
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$') & 
+        filters.create(lambda _, ctx: ctx.user_data.get("setting_target", {}).get("step") == "daily_amount"),
+        handle_daily_amount
+    ))
 
     logger.info("Bot sedang berjalan...")
     application.run_polling()
