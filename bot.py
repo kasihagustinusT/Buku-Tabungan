@@ -252,6 +252,17 @@ async def calendar_handler(query: CallbackQuery, context: ContextTypes.DEFAULT_T
         )
 
 # Input Handlers
+async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_data = context.user_data.get("setting_target", {})
+    step = user_data.get("step")
+    
+    if step == "duration":
+        await handle_target_duration(update, context)
+    elif step == "daily_amount":
+        await handle_daily_amount(update, context)
+    else:
+        await update.message.reply_text("Silakan pilih menu yang tersedia.")
+
 async def handle_target_duration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.user_data.get("setting_target") or context.user_data["setting_target"].get("step") != "duration":
         return
@@ -535,6 +546,7 @@ async def show_statistik(query: CallbackQuery, context: ContextTypes.DEFAULT_TYP
     )
     
     await query.edit_message_text(response, reply_markup=main_menu(user_id), parse_mode="Markdown")
+
 async def show_riwayat(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = query.from_user.id
     status = load_status()
@@ -605,16 +617,10 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(CallbackQueryHandler(calendar_handler, pattern="^calendar_"))
     
-    # Add message handlers with correct filters
+    # Add message handler for text input
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$') & 
-        filters.create(lambda _, ctx: ctx.user_data.get("setting_target", {}).get("step") == "duration"),
-        handle_target_duration
-    ))
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$') & 
-        filters.create(lambda _, ctx: ctx.user_data.get("setting_target", {}).get("step") == "daily_amount"),
-        handle_daily_amount
+        filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'),
+        handle_text_input
     ))
 
     logger.info("Bot sedang berjalan...")
