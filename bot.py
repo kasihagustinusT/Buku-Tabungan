@@ -511,7 +511,7 @@ async def show_statistik(query: CallbackQuery, context: ContextTypes.DEFAULT_TYP
     user_id = query.from_user.id
     status = load_status()
     bulan_ini = date.today().strftime("%b-%Y")
-    hari_nabung = [k for k, v in status.items() if bulan_ini in k and v.get("saved"))
+    hari_nabung = [k for k, v in status.items() if bulan_ini in k and v.get("saved")]
     total_hari = len(hari_nabung)
     total_uang = sum(v.get("amount", 0) for k, v in status.items() if bulan_ini in k and v.get("saved"))
     
@@ -535,7 +535,6 @@ async def show_statistik(query: CallbackQuery, context: ContextTypes.DEFAULT_TYP
     )
     
     await query.edit_message_text(response, reply_markup=main_menu(user_id), parse_mode="Markdown")
-
 async def show_riwayat(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = query.from_user.id
     status = load_status()
